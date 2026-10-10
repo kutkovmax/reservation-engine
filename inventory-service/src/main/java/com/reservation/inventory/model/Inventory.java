@@ -6,7 +6,6 @@ import jakarta.persistence.Id;
 import jakarta.persistence.PrePersist;
 import jakarta.persistence.PreUpdate;
 import jakarta.persistence.Table;
-import jakarta.persistence.Version;
 
 import java.time.Instant;
 
@@ -24,7 +23,6 @@ public class Inventory {
     @Column(name = "reserved_stock", nullable = false)
     private int reservedStock;
 
-    @Version
     @Column(name = "version", nullable = false)
     private long version;
 
