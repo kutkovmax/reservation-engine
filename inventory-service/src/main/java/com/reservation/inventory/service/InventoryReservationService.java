@@ -3,9 +3,11 @@ package com.reservation.inventory.service;
 import com.reservation.inventory.event.OrderPlacedEvent;
 import com.reservation.inventory.model.Inventory;
 import com.reservation.inventory.repository.InventoryRepository;
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
+import java.time.Duration;
 import java.time.Instant;
 import java.util.Optional;
 
@@ -13,9 +15,14 @@ import java.util.Optional;
 public class InventoryReservationService {
 
     private final InventoryRepository inventoryRepository;
+    private final Duration processingDelay;
 
-    public InventoryReservationService(InventoryRepository inventoryRepository) {
+    public InventoryReservationService(
+        InventoryRepository inventoryRepository,
+        @Value("${reservation.processing-delay:0ms}") Duration processingDelay
+    ) {
         this.inventoryRepository = inventoryRepository;
+        this.processingDelay = processingDelay;
     }
 
     @Transactional
@@ -35,6 +42,8 @@ public class InventoryReservationService {
             return ReservationOutcome.INSUFFICIENT_STOCK;
         }
 
+        pauseBeforeUpdate();
+
         int updatedRows = inventoryRepository.incrementReservedStock(
             event.sku(),
             event.quantity(),
@@ -45,5 +54,18 @@ public class InventoryReservationService {
         }
 
         return ReservationOutcome.RESERVED;
+    }
+
+    private void pauseBeforeUpdate() {
+        if (processingDelay.isZero() || processingDelay.isNegative()) {
+            return;
+        }
+
+        try {
+            Thread.sleep(processingDelay);
+        } catch (InterruptedException exception) {
+            Thread.currentThread().interrupt();
+            throw new IllegalStateException("Reservation processing was interrupted", exception);
+        }
     }
 }

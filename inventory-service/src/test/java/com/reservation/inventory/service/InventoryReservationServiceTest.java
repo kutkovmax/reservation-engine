@@ -3,12 +3,13 @@ package com.reservation.inventory.service;
 import com.reservation.inventory.event.OrderPlacedEvent;
 import com.reservation.inventory.model.Inventory;
 import com.reservation.inventory.repository.InventoryRepository;
+import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
-import org.mockito.InjectMocks;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
 
+import java.time.Duration;
 import java.time.Instant;
 import java.util.Optional;
 import java.util.UUID;
@@ -26,8 +27,12 @@ class InventoryReservationServiceTest {
     @Mock
     private InventoryRepository inventoryRepository;
 
-    @InjectMocks
     private InventoryReservationService reservationService;
+
+    @BeforeEach
+    void setUp() {
+        reservationService = new InventoryReservationService(inventoryRepository, Duration.ZERO);
+    }
 
     @Test
     void reservesAvailableStock() {

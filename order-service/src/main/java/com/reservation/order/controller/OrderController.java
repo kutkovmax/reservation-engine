@@ -43,7 +43,7 @@ public class OrderController {
         );
 
         log.info("Sending test order event to Kafka topic {}: {}", TOPIC, event);
-        kafkaTemplate.send(TOPIC, request.sku(), event);
+        kafkaTemplate.send(TOPIC, orderId.toString(), event);
 
         return ResponseEntity.ok(Map.of(
             "status", "SENT",
