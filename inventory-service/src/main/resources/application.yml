@@ -36,3 +36,6 @@ spring:
       value-serializer: org.springframework.kafka.support.serializer.JsonSerializer
       properties:
         spring.json.add.type.headers: false
+
+reservation:
+  simulate-crash-after-reservation: ${SIMULATE_CRASH_AFTER_RESERVATION:false}
