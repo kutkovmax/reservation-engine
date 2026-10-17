@@ -62,6 +62,11 @@ public class OrderEventListener {
                 event.sku(),
                 event.quantity()
             );
+            case DUPLICATE -> log.info(
+                "Skipping already processed order event: eventId={}, orderId={}",
+                event.eventId(),
+                event.orderId()
+            );
             case SKU_NOT_FOUND -> log.warn(
                 "Cannot reserve unknown SKU: orderId={}, sku={}",
                 event.orderId(),

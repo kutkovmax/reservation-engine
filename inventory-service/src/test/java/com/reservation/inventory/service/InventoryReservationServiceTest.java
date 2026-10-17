@@ -2,6 +2,7 @@ package com.reservation.inventory.service;
 
 import com.reservation.inventory.event.OrderPlacedEvent;
 import com.reservation.inventory.repository.InventoryRepository;
+import com.reservation.inventory.repository.ProcessedEventRepository;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
@@ -15,6 +16,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.verify;
+import static org.mockito.Mockito.verifyNoInteractions;
 import static org.mockito.Mockito.when;
 
 @ExtendWith(MockitoExtension.class)
@@ -23,16 +25,20 @@ class InventoryReservationServiceTest {
     @Mock
     private InventoryRepository inventoryRepository;
 
+    @Mock
+    private ProcessedEventRepository processedEventRepository;
+
     private InventoryReservationService reservationService;
 
     @BeforeEach
     void setUp() {
-        reservationService = new InventoryReservationService(inventoryRepository);
+        reservationService = new InventoryReservationService(inventoryRepository, processedEventRepository);
     }
 
     @Test
     void reservesAvailableStock() {
         OrderPlacedEvent event = event("BOOK-001", 2);
+        acceptNewEvent(event);
         when(inventoryRepository.reserveStockIfAvailable(eq("BOOK-001"), eq(2), any(Instant.class)))
             .thenReturn(1);
 
@@ -45,6 +51,7 @@ class InventoryReservationServiceTest {
     @Test
     void rejectsInsufficientStock() {
         OrderPlacedEvent event = event("BOOK-001", 11);
+        acceptNewEvent(event);
         when(inventoryRepository.reserveStockIfAvailable(eq("BOOK-001"), eq(11), any(Instant.class)))
             .thenReturn(0);
         when(inventoryRepository.existsById("BOOK-001")).thenReturn(true);
@@ -58,6 +65,7 @@ class InventoryReservationServiceTest {
     @Test
     void rejectsUnknownSku() {
         OrderPlacedEvent event = event("UNKNOWN-001", 1);
+        acceptNewEvent(event);
         when(inventoryRepository.reserveStockIfAvailable(eq("UNKNOWN-001"), eq(1), any(Instant.class)))
             .thenReturn(0);
         when(inventoryRepository.existsById("UNKNOWN-001")).thenReturn(false);
@@ -66,6 +74,29 @@ class InventoryReservationServiceTest {
 
         assertThat(outcome).isEqualTo(ReservationOutcome.SKU_NOT_FOUND);
         verify(inventoryRepository).reserveStockIfAvailable(eq("UNKNOWN-001"), eq(1), any(Instant.class));
+    }
+
+    @Test
+    void skipsStockReservationForDuplicateEvent() {
+        OrderPlacedEvent event = event("BOOK-001", 2);
+        when(processedEventRepository.insertIfAbsent(
+            eq(event.eventId()),
+            eq("OrderPlaced"),
+            any(Instant.class)
+        )).thenReturn(0);
+
+        ReservationOutcome outcome = reservationService.reserve(event);
+
+        assertThat(outcome).isEqualTo(ReservationOutcome.DUPLICATE);
+        verifyNoInteractions(inventoryRepository);
+    }
+
+    private void acceptNewEvent(OrderPlacedEvent event) {
+        when(processedEventRepository.insertIfAbsent(
+            eq(event.eventId()),
+            eq("OrderPlaced"),
+            any(Instant.class)
+        )).thenReturn(1);
     }
 
     private OrderPlacedEvent event(String sku, int quantity) {

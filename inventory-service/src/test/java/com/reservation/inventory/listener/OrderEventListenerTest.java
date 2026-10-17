@@ -24,7 +24,7 @@ class OrderEventListenerTest {
     private InventoryReservationService reservationService;
 
     @Test
-    void redeliveryAfterSimulatedCrashReservesStockTwice() {
+    void redeliveryAfterSimulatedCrashSkipsDuplicateReservation() {
         OrderPlacedEvent event = new OrderPlacedEvent(
             UUID.randomUUID(),
             UUID.randomUUID(),
@@ -33,7 +33,8 @@ class OrderEventListenerTest {
             Instant.now()
         );
         OrderEventListener listener = new OrderEventListener(reservationService, true);
-        when(reservationService.reserve(event)).thenReturn(ReservationOutcome.RESERVED);
+        when(reservationService.reserve(event))
+            .thenReturn(ReservationOutcome.RESERVED, ReservationOutcome.DUPLICATE);
 
         assertThatThrownBy(() -> listener.handleOrderPlaced(event))
             .isInstanceOf(IllegalStateException.class)

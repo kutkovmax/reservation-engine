@@ -2,6 +2,7 @@ package com.reservation.inventory.service;
 
 import com.reservation.inventory.event.OrderPlacedEvent;
 import com.reservation.inventory.repository.InventoryRepository;
+import com.reservation.inventory.repository.ProcessedEventRepository;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -10,10 +11,17 @@ import java.time.Instant;
 @Service
 public class InventoryReservationService {
 
-    private final InventoryRepository inventoryRepository;
+    private static final String ORDER_PLACED_EVENT_TYPE = "OrderPlaced";
 
-    public InventoryReservationService(InventoryRepository inventoryRepository) {
+    private final InventoryRepository inventoryRepository;
+    private final ProcessedEventRepository processedEventRepository;
+
+    public InventoryReservationService(
+        InventoryRepository inventoryRepository,
+        ProcessedEventRepository processedEventRepository
+    ) {
         this.inventoryRepository = inventoryRepository;
+        this.processedEventRepository = processedEventRepository;
     }
 
     @Transactional
@@ -22,10 +30,20 @@ public class InventoryReservationService {
             throw new IllegalArgumentException("Reservation quantity must be positive");
         }
 
+        Instant now = Instant.now();
+        int insertedEvents = processedEventRepository.insertIfAbsent(
+            event.eventId(),
+            ORDER_PLACED_EVENT_TYPE,
+            now
+        );
+        if (insertedEvents == 0) {
+            return ReservationOutcome.DUPLICATE;
+        }
+
         int updatedRows = inventoryRepository.reserveStockIfAvailable(
             event.sku(),
             event.quantity(),
-            Instant.now()
+            now
         );
         if (updatedRows == 1) {
             return ReservationOutcome.RESERVED;
