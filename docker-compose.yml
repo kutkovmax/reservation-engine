@@ -73,6 +73,9 @@ services:
 
         create_topic order-events 604800000
         create_topic inventory-events 604800000
+        create_topic order-events-retry-0 604800000
+        create_topic order-events-retry-1 604800000
+        create_topic order-events-retry-2 604800000
         create_topic order-events-dlt 2592000000
         create_topic inventory-events-dlt 2592000000
 
