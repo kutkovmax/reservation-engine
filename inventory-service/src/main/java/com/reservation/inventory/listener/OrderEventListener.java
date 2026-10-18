@@ -34,12 +34,12 @@ public class OrderEventListener {
     @KafkaListener(topics = ORDER_EVENTS_TOPIC)
     public void handleOrderPlaced(OrderPlacedEvent event) {
         log.info(
-            "Received order event: eventId={}, orderId={}, sku={}, quantity={}, createdAt={}",
+            "Получено событие заказа: eventId={}, orderId={}, sku={}, quantity={}, occurredAt={}",
             event.eventId(),
             event.orderId(),
             event.sku(),
             event.quantity(),
-            event.createdAt()
+            event.occurredAt()
         );
 
         ReservationOutcome outcome = reservationService.reserve(event);
@@ -49,7 +49,7 @@ public class OrderEventListener {
                 && crashedEventIds.add(event.eventId())
         ) {
             log.warn(
-                "Simulating consumer crash after reserving stock and before committing Kafka offset: eventId={}",
+                "Симуляция падения консьюмера после резервирования остатка и до коммита смещения Kafka: eventId={}",
                 event.eventId()
             );
             throw new IllegalStateException("Simulated consumer crash after stock reservation");
@@ -57,23 +57,23 @@ public class OrderEventListener {
 
         switch (outcome) {
             case RESERVED -> log.info(
-                "Reserved stock: orderId={}, sku={}, quantity={}",
+                "Остаток успешно зарезервирован: orderId={}, sku={}, quantity={}",
                 event.orderId(),
                 event.sku(),
                 event.quantity()
             );
             case DUPLICATE -> log.info(
-                "Skipping already processed order event: eventId={}, orderId={}",
+                "Пропуск уже обработанного события заказа (дубликат): eventId={}, orderId={}",
                 event.eventId(),
                 event.orderId()
             );
             case SKU_NOT_FOUND -> log.warn(
-                "Cannot reserve unknown SKU: orderId={}, sku={}",
+                "Невозможно зарезервировать неизвестный SKU: orderId={}, sku={}",
                 event.orderId(),
                 event.sku()
             );
             case INSUFFICIENT_STOCK -> log.info(
-                "Insufficient stock: orderId={}, sku={}, quantity={}",
+                "Недостаточно товара на складе: orderId={}, sku={}, quantity={}",
                 event.orderId(),
                 event.sku(),
                 event.quantity()
