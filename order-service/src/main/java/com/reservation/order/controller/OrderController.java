@@ -8,6 +8,7 @@ import com.reservation.order.service.OrderService;
 import jakarta.validation.Valid;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.kafka.core.KafkaTemplate;
@@ -32,13 +33,23 @@ public class OrderController {
 
     private final OrderService orderService;
     private final KafkaTemplate<String, Object> kafkaTemplate;
+    private final boolean simulateKafkaFailure;
+
+    public OrderController(
+        OrderService orderService,
+        KafkaTemplate<String, Object> kafkaTemplate,
+        @Value("${reservation.simulate-kafka-failure:false}") boolean simulateKafkaFailure
+    ) {
+        this.orderService = orderService;
+        this.kafkaTemplate = kafkaTemplate;
+        this.simulateKafkaFailure = simulateKafkaFailure;
+    }
 
     public OrderController(
         OrderService orderService,
         KafkaTemplate<String, Object> kafkaTemplate
     ) {
-        this.orderService = orderService;
-        this.kafkaTemplate = kafkaTemplate;
+        this(orderService, kafkaTemplate, false);
     }
 
     @PostMapping
@@ -61,6 +72,15 @@ public class OrderController {
     }
 
     private void publishOrderPlaced(OrderResponse order) {
+        if (simulateKafkaFailure) {
+            log.warn(
+                "Simulating network failure before Kafka send: orderId={}, sku={}",
+                order.orderId(),
+                order.sku()
+            );
+            throw new IllegalStateException("Simulated network failure before Kafka send");
+        }
+
         OrderPlacedEvent event = new OrderPlacedEvent(
             UUID.randomUUID(),
             ORDER_PLACED_EVENT_TYPE,

@@ -6,10 +6,10 @@ import com.reservation.order.event.OrderPlacedEvent;
 import com.reservation.order.model.OrderStatus;
 import com.reservation.order.service.CreateOrderResult;
 import com.reservation.order.service.OrderService;
+import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.ArgumentCaptor;
-import org.mockito.InjectMocks;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
 import org.springframework.http.HttpStatus;
@@ -20,6 +20,7 @@ import java.time.Instant;
 import java.util.UUID;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.verifyNoInteractions;
@@ -34,8 +35,12 @@ class OrderControllerTest {
     @Mock
     private KafkaTemplate<String, Object> kafkaTemplate;
 
-    @InjectMocks
     private OrderController orderController;
+
+    @BeforeEach
+    void setUp() {
+        orderController = new OrderController(orderService, kafkaTemplate, false);
+    }
 
     @Test
     void usesSkuAsKafkaPartitionKeyOnOrderCreation() {
@@ -95,5 +100,26 @@ class OrderControllerTest {
 
         assertThat(response).isEqualTo(orderResponse);
     }
+
+    @Test
+    void simulatedKafkaFailureThrowsExceptionAfterOrderSavedLeavingGhostOrder() {
+        OrderController controllerWithFailure = new OrderController(orderService, kafkaTemplate, true);
+        CreateOrderRequest request = new CreateOrderRequest("BOOK-001", 2);
+        UUID orderId = UUID.randomUUID();
+        Instant now = Instant.now();
+        OrderResponse orderResponse = new OrderResponse(
+            orderId, "BOOK-001", 2, OrderStatus.PENDING, null, now, now, null, null
+        );
+        when(orderService.create("key-simulated-fail", request))
+            .thenReturn(new CreateOrderResult(orderResponse, true));
+
+        assertThatThrownBy(() -> controllerWithFailure.create("key-simulated-fail", request))
+            .isInstanceOf(IllegalStateException.class)
+            .hasMessage("Simulated network failure before Kafka send");
+
+        verify(orderService).create("key-simulated-fail", request);
+        verifyNoInteractions(kafkaTemplate);
+    }
 }
+
 
