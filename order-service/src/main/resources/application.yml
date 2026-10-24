@@ -33,4 +33,10 @@ spring:
       properties:
         spring.json.add.type.headers: false
 
+reservation:
+  outbox:
+    batch-size: ${OUTBOX_BATCH_SIZE:50}
+    poll-interval-ms: ${OUTBOX_POLL_INTERVAL_MS:500}
+
+
 
