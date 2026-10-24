@@ -33,6 +33,4 @@ spring:
       properties:
         spring.json.add.type.headers: false
 
-reservation:
-  simulate-kafka-failure: ${SIMULATE_KAFKA_FAILURE:false}
 

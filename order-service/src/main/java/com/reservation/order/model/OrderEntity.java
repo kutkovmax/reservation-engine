@@ -52,7 +52,7 @@ public class OrderEntity {
     @Column(name = "expires_at")
     private Instant expiresAt;
 
-    protected OrderEntity() {}
+    public OrderEntity() {}
 
     public UUID getId() {
         return id;
