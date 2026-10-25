@@ -5,24 +5,31 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import com.reservation.order.dto.CreateOrderRequest;
 import com.reservation.order.dto.OrderResponse;
 import com.reservation.order.event.OrderPlacedEvent;
+import com.reservation.order.event.InventoryReservationFailedEvent;
+import com.reservation.order.event.InventoryReservedEvent;
 import com.reservation.order.exception.IdempotencyKeyReusedException;
 import com.reservation.order.exception.OrderNotFoundException;
 import com.reservation.order.exception.RequestValidationException;
+import com.reservation.order.model.OrderEntity;
 import com.reservation.order.model.OrderStatus;
 import com.reservation.order.repository.OrderRepository;
 import com.reservation.order.repository.OutboxRepository;
+import com.reservation.order.repository.ProcessedEventRepository;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.nio.charset.StandardCharsets;
 import java.security.MessageDigest;
 import java.security.NoSuchAlgorithmException;
+import java.time.Duration;
 import java.time.Instant;
 import java.util.HexFormat;
 import java.util.Locale;
 import java.util.Map;
+import java.util.Optional;
 import java.util.UUID;
 import java.util.regex.Pattern;
 
@@ -35,19 +42,33 @@ public class OrderService {
     private static final int ORDER_PLACED_EVENT_VERSION = 1;
     private static final Pattern SKU_PATTERN = Pattern.compile("[A-Z0-9._-]{1,64}");
 
-
     private final OrderRepository orderRepository;
     private final OutboxRepository outboxRepository;
+    private final ProcessedEventRepository processedEventRepository;
     private final ObjectMapper objectMapper;
+    private final Duration holdTtl;
 
     public OrderService(
         OrderRepository orderRepository,
         OutboxRepository outboxRepository,
-        ObjectMapper objectMapper
+        ProcessedEventRepository processedEventRepository,
+        ObjectMapper objectMapper,
+        @Value("${reservation.hold-ttl:15m}") Duration holdTtl
     ) {
         this.orderRepository = orderRepository;
         this.outboxRepository = outboxRepository;
+        this.processedEventRepository = processedEventRepository;
         this.objectMapper = objectMapper;
+        this.holdTtl = holdTtl;
+    }
+
+    public OrderService(
+        OrderRepository orderRepository,
+        OutboxRepository outboxRepository,
+        ProcessedEventRepository processedEventRepository,
+        ObjectMapper objectMapper
+    ) {
+        this(orderRepository, outboxRepository, processedEventRepository, objectMapper, Duration.ofMinutes(15));
     }
 
     @Transactional
@@ -137,6 +158,101 @@ public class OrderService {
         return orderRepository.findById(orderId)
             .map(OrderResponse::from)
             .orElseThrow(() -> new OrderNotFoundException(orderId));
+    }
+
+    @Transactional
+    public void handleInventoryReserved(InventoryReservedEvent event) {
+        Instant now = Instant.now();
+        int inserted = processedEventRepository.insertIfAbsent(
+            event.eventId(),
+            event.eventType(),
+            now
+        );
+        if (inserted == 0) {
+            log.info(
+                "Пропуск уже обработанного события inventory (дубликат): eventId={}, orderId={}",
+                event.eventId(),
+                event.orderId()
+            );
+            return;
+        }
+
+        Optional<OrderEntity> orderOpt = orderRepository.findById(event.orderId());
+        if (orderOpt.isEmpty()) {
+            log.warn(
+                "Заказ для события InventoryReserved не найден: orderId={}, eventId={}",
+                event.orderId(),
+                event.eventId()
+            );
+            return;
+        }
+
+        OrderEntity order = orderOpt.get();
+        if (order.getStatus() != OrderStatus.PENDING) {
+            log.info(
+                "Поздний результат inventory для заказа не в статусе PENDING (проигнорировано): orderId={}, currentStatus={}, eventId={}",
+                order.getId(),
+                order.getStatus(),
+                event.eventId()
+            );
+            return;
+        }
+
+        Instant expiresAt = now.plus(holdTtl);
+        order.markReserved(now, expiresAt);
+        orderRepository.save(order);
+        log.info(
+            "Заказ переведен в статус RESERVED: orderId={}, expiresAt={}",
+            order.getId(),
+            expiresAt
+        );
+    }
+
+    @Transactional
+    public void handleInventoryReservationFailed(InventoryReservationFailedEvent event) {
+        Instant now = Instant.now();
+        int inserted = processedEventRepository.insertIfAbsent(
+            event.eventId(),
+            event.eventType(),
+            now
+        );
+        if (inserted == 0) {
+            log.info(
+                "Пропуск уже обработанного события inventory (дубликат): eventId={}, orderId={}",
+                event.eventId(),
+                event.orderId()
+            );
+            return;
+        }
+
+        Optional<OrderEntity> orderOpt = orderRepository.findById(event.orderId());
+        if (orderOpt.isEmpty()) {
+            log.warn(
+                "Заказ для события InventoryReservationFailed не найден: orderId={}, eventId={}",
+                event.orderId(),
+                event.eventId()
+            );
+            return;
+        }
+
+        OrderEntity order = orderOpt.get();
+        if (order.getStatus() != OrderStatus.PENDING) {
+            log.info(
+                "Поздний результат inventory для заказа не в статусе PENDING (проигнорировано): orderId={}, currentStatus={}, eventId={}",
+                order.getId(),
+                order.getStatus(),
+                event.eventId()
+            );
+            return;
+        }
+
+        order.markRejected(event.reason(), now);
+        orderRepository.save(order);
+        log.info(
+            "Заказ переведен в статус REJECTED: orderId={}, reason={}",
+            order.getId(),
+            event.reason()
+        );
     }
 
 

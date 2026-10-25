@@ -54,6 +54,49 @@ public class OrderEntity {
 
     public OrderEntity() {}
 
+    public OrderEntity(
+        UUID id,
+        String idempotencyKey,
+        String requestHash,
+        String sku,
+        int quantity,
+        OrderStatus status,
+        String rejectionReason,
+        long aggregateVersion,
+        Instant createdAt,
+        Instant updatedAt,
+        Instant reservedAt,
+        Instant expiresAt
+    ) {
+        this.id = id;
+        this.idempotencyKey = idempotencyKey;
+        this.requestHash = requestHash;
+        this.sku = sku;
+        this.quantity = quantity;
+        this.status = status;
+        this.rejectionReason = rejectionReason;
+        this.aggregateVersion = aggregateVersion;
+        this.createdAt = createdAt;
+        this.updatedAt = updatedAt;
+        this.reservedAt = reservedAt;
+        this.expiresAt = expiresAt;
+    }
+
+    public void markReserved(Instant reservedAt, Instant expiresAt) {
+        this.status = OrderStatus.RESERVED;
+        this.reservedAt = reservedAt;
+        this.expiresAt = expiresAt;
+        this.aggregateVersion++;
+        this.updatedAt = reservedAt;
+    }
+
+    public void markRejected(String rejectionReason, Instant now) {
+        this.status = OrderStatus.REJECTED;
+        this.rejectionReason = rejectionReason;
+        this.aggregateVersion++;
+        this.updatedAt = now;
+    }
+
     public UUID getId() {
         return id;
     }
