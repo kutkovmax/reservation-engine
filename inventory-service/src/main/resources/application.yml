@@ -41,3 +41,6 @@ spring:
 
 reservation:
   simulate-crash-after-reservation: ${SIMULATE_CRASH_AFTER_RESERVATION:false}
+  outbox:
+    poll-interval-ms: 500
+    batch-size: 50

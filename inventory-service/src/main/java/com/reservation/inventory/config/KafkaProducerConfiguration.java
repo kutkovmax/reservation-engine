@@ -35,4 +35,12 @@ public class KafkaProducerConfiguration {
     KafkaTemplate<String, Object> kafkaTemplate(ProducerFactory<String, Object> producerFactory) {
         return new KafkaTemplate<>(producerFactory);
     }
+
+    @Bean
+    org.apache.kafka.clients.admin.NewTopic inventoryEventsTopic() {
+        return org.springframework.kafka.config.TopicBuilder.name("inventory-events")
+            .partitions(3)
+            .replicas(1)
+            .build();
+    }
 }
