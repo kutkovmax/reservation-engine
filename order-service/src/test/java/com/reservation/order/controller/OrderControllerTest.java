@@ -81,4 +81,20 @@ class OrderControllerTest {
         assertThat(response).isEqualTo(orderResponse);
         verify(orderService).get(orderId);
     }
+
+    @Test
+    void cancelReturnsOkWithCancelledOrder() {
+        UUID orderId = UUID.randomUUID();
+        Instant now = Instant.now();
+        OrderResponse orderResponse = new OrderResponse(
+            orderId, "BOOK-001", 2, OrderStatus.CANCELLED, null, now, now, null, null
+        );
+        when(orderService.cancel(orderId)).thenReturn(orderResponse);
+
+        ResponseEntity<OrderResponse> response = orderController.cancel(orderId);
+
+        assertThat(response.getStatusCode()).isEqualTo(HttpStatus.OK);
+        assertThat(response.getBody()).isEqualTo(orderResponse);
+        verify(orderService).cancel(orderId);
+    }
 }

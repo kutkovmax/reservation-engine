@@ -287,4 +287,98 @@ class OrderServiceTest {
         verify(orderRepository, never()).findById(any());
         verify(orderRepository, never()).save(any());
     }
+
+    @Test
+    void cancelPendingOrderTransitionsToCancelledAndWritesOutbox() {
+        UUID orderId = UUID.randomUUID();
+        Instant createdAt = Instant.parse("2026-11-01T12:00:00Z");
+
+        OrderEntity order = new OrderEntity(
+            orderId, "idemp-1", "hash-1", "BOOK-001", 2,
+            OrderStatus.PENDING, null, 1L, createdAt, createdAt, null, null
+        );
+
+        when(orderRepository.findById(orderId)).thenReturn(Optional.of(order));
+
+        var response = orderService.cancel(orderId);
+
+        assertThat(response.status()).isEqualTo(OrderStatus.CANCELLED);
+        assertThat(order.getStatus()).isEqualTo(OrderStatus.CANCELLED);
+        assertThat(order.getAggregateVersion()).isEqualTo(2L);
+        verify(orderRepository).save(order);
+
+        verify(outboxRepository).insertMessage(
+            any(UUID.class),
+            any(UUID.class),
+            eq(orderId),
+            eq(2L),
+            eq("order-events"),
+            eq("BOOK-001"),
+            eq("OrderCancelled"),
+            any(String.class),
+            any(Instant.class)
+        );
+    }
+
+    @Test
+    void cancelReservedOrderTransitionsToCancelledAndWritesOutbox() {
+        UUID orderId = UUID.randomUUID();
+        Instant createdAt = Instant.parse("2026-11-01T12:00:00Z");
+
+        OrderEntity order = new OrderEntity(
+            orderId, "idemp-1", "hash-1", "BOOK-001", 2,
+            OrderStatus.RESERVED, null, 2L, createdAt, createdAt, createdAt, createdAt.plusSeconds(900)
+        );
+
+        when(orderRepository.findById(orderId)).thenReturn(Optional.of(order));
+
+        var response = orderService.cancel(orderId);
+
+        assertThat(response.status()).isEqualTo(OrderStatus.CANCELLED);
+        assertThat(order.getStatus()).isEqualTo(OrderStatus.CANCELLED);
+        assertThat(order.getAggregateVersion()).isEqualTo(3L);
+        verify(orderRepository).save(order);
+
+        verify(outboxRepository).insertMessage(
+            any(UUID.class),
+            any(UUID.class),
+            eq(orderId),
+            eq(3L),
+            eq("order-events"),
+            eq("BOOK-001"),
+            eq("OrderCancelled"),
+            any(String.class),
+            any(Instant.class)
+        );
+    }
+
+    @Test
+    void cancelAlreadyCancelledOrderIsIdempotent() {
+        UUID orderId = UUID.randomUUID();
+        Instant createdAt = Instant.parse("2026-11-01T12:00:00Z");
+
+        OrderEntity order = new OrderEntity(
+            orderId, "idemp-1", "hash-1", "BOOK-001", 2,
+            OrderStatus.CANCELLED, null, 2L, createdAt, createdAt, null, null
+        );
+
+        when(orderRepository.findById(orderId)).thenReturn(Optional.of(order));
+
+        var response = orderService.cancel(orderId);
+
+        assertThat(response.status()).isEqualTo(OrderStatus.CANCELLED);
+        verify(orderRepository, never()).save(any());
+        verifyNoInteractions(outboxRepository);
+    }
+
+    @Test
+    void cancelNotFoundThrowsOrderNotFoundException() {
+        UUID orderId = UUID.randomUUID();
+        when(orderRepository.findById(orderId)).thenReturn(Optional.empty());
+
+        assertThatThrownBy(() -> orderService.cancel(orderId))
+            .isInstanceOf(OrderNotFoundException.class);
+
+        verifyNoInteractions(outboxRepository);
+    }
 }

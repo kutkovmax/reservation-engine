@@ -97,6 +97,12 @@ public class OrderEntity {
         this.updatedAt = now;
     }
 
+    public void markCancelled(Instant now) {
+        this.status = OrderStatus.CANCELLED;
+        this.aggregateVersion++;
+        this.updatedAt = now;
+    }
+
     public UUID getId() {
         return id;
     }

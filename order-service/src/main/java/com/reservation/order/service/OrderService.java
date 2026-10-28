@@ -4,6 +4,7 @@ import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.reservation.order.dto.CreateOrderRequest;
 import com.reservation.order.dto.OrderResponse;
+import com.reservation.order.event.OrderCancelledEvent;
 import com.reservation.order.event.OrderPlacedEvent;
 import com.reservation.order.event.InventoryReservationFailedEvent;
 import com.reservation.order.event.InventoryReservedEvent;
@@ -253,6 +254,62 @@ public class OrderService {
             order.getId(),
             event.reason()
         );
+    }
+
+    @Transactional
+    public OrderResponse cancel(UUID orderId) {
+        log.info("Получен запрос на отмену заказа: orderId={}", orderId);
+        OrderEntity order = orderRepository.findById(orderId)
+            .orElseThrow(() -> new OrderNotFoundException(orderId));
+
+        if (order.getStatus() == OrderStatus.CANCELLED) {
+            log.info("Повторный запрос отмены для уже отмененного заказа: orderId={}", orderId);
+            return OrderResponse.from(order);
+        }
+
+        if (order.getStatus() != OrderStatus.PENDING && order.getStatus() != OrderStatus.RESERVED) {
+            log.info(
+                "Запрос отмены для терминального заказа (статус не изменен): orderId={}, currentStatus={}",
+                orderId,
+                order.getStatus()
+            );
+            return OrderResponse.from(order);
+        }
+
+        Instant now = Instant.now();
+        order.markCancelled(now);
+        orderRepository.save(order);
+
+        UUID eventId = UUID.randomUUID();
+        OrderCancelledEvent event = new OrderCancelledEvent(
+            eventId,
+            order.getAggregateVersion(),
+            order.getId(),
+            order.getSku(),
+            "USER_REQUESTED",
+            now
+        );
+
+        String payload = writePayloadAsJson(event);
+        outboxRepository.insertMessage(
+            UUID.randomUUID(),
+            eventId,
+            order.getId(),
+            order.getAggregateVersion(),
+            ORDER_EVENTS_TOPIC,
+            order.getSku(),
+            OrderCancelledEvent.EVENT_TYPE,
+            payload,
+            now
+        );
+
+        log.info(
+            "Заказ успешно отменен и событие OrderCancelled сохранено в outbox: orderId={}, aggregateVersion={}",
+            order.getId(),
+            order.getAggregateVersion()
+        );
+
+        return OrderResponse.from(order);
     }
 
 
