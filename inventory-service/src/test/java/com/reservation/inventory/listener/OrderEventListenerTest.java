@@ -11,6 +11,7 @@ import org.mockito.junit.jupiter.MockitoExtension;
 import java.time.Instant;
 import java.util.UUID;
 
+import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatCode;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.Mockito.times;
@@ -43,5 +44,50 @@ class OrderEventListenerTest {
         assertThatCode(() -> listener.handleOrderPlaced(event)).doesNotThrowAnyException();
 
         verify(reservationService, times(2)).reserve(event);
+    }
+
+    @Test
+    void handleOrderCancelledDelegatesToService() {
+        OrderEventListener listener = new OrderEventListener(reservationService, false);
+        com.reservation.inventory.event.OrderCancelledEvent event = new com.reservation.inventory.event.OrderCancelledEvent(
+            UUID.randomUUID(),
+            2L,
+            UUID.randomUUID(),
+            "BOOK-001",
+            "USER_REQUESTED",
+            Instant.now()
+        );
+
+        listener.handleOrderCancelled(event);
+
+        verify(reservationService).cancel(event);
+    }
+
+    @Test
+    void handleOrderEventRoutesOrderCancelledJson() {
+        OrderEventListener listener = new OrderEventListener(reservationService, false);
+        UUID eventId = UUID.randomUUID();
+        UUID orderId = UUID.randomUUID();
+        String json = """
+            {
+              "eventId": "%s",
+              "eventType": "OrderCancelled",
+              "eventVersion": 1,
+              "aggregateVersion": 2,
+              "orderId": "%s",
+              "sku": "BOOK-001",
+              "reason": "USER_REQUESTED",
+              "occurredAt": "2026-11-01T12:35:00Z"
+            }
+            """.formatted(eventId, orderId);
+
+        listener.handleOrderEvent(json);
+
+        org.mockito.ArgumentCaptor<com.reservation.inventory.event.OrderCancelledEvent> captor =
+            org.mockito.ArgumentCaptor.forClass(com.reservation.inventory.event.OrderCancelledEvent.class);
+        verify(reservationService).cancel(captor.capture());
+        assertThat(captor.getValue().eventId()).isEqualTo(eventId);
+        assertThat(captor.getValue().orderId()).isEqualTo(orderId);
+        assertThat(captor.getValue().reason()).isEqualTo("USER_REQUESTED");
     }
 }

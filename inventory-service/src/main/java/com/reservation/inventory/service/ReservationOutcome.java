@@ -4,5 +4,6 @@ public enum ReservationOutcome {
     RESERVED,
     DUPLICATE,
     SKU_NOT_FOUND,
-    INSUFFICIENT_STOCK
+    INSUFFICIENT_STOCK,
+    ORDER_ALREADY_CANCELLED
 }

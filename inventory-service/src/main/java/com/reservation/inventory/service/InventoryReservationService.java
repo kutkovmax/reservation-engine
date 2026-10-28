@@ -4,6 +4,7 @@ import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.reservation.inventory.event.InventoryReservationFailedEvent;
 import com.reservation.inventory.event.InventoryReservedEvent;
+import com.reservation.inventory.event.OrderCancelledEvent;
 import com.reservation.inventory.event.OrderPlacedEvent;
 import com.reservation.inventory.model.ReservationEntity;
 import com.reservation.inventory.model.ReservationStatus;
@@ -15,6 +16,7 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.time.Instant;
+import java.util.Optional;
 import java.util.UUID;
 
 @Service
@@ -59,7 +61,33 @@ public class InventoryReservationService {
             return ReservationOutcome.DUPLICATE;
         }
 
-        if (reservationRepository.existsById(event.orderId())) {
+        Optional<ReservationEntity> existingOpt = reservationRepository.findById(event.orderId());
+        if (existingOpt.isPresent()) {
+            ReservationEntity existing = existingOpt.get();
+            if (existing.getStatus() == ReservationStatus.CANCELLED) {
+                UUID outEventId = UUID.randomUUID();
+                InventoryReservationFailedEvent outEvent = new InventoryReservationFailedEvent(
+                    outEventId,
+                    event.eventId(),
+                    event.orderId(),
+                    event.sku(),
+                    event.quantity(),
+                    "ORDER_ALREADY_CANCELLED",
+                    now
+                );
+                outboxRepository.insertMessage(
+                    UUID.randomUUID(),
+                    outEventId,
+                    event.orderId(),
+                    1L,
+                    INVENTORY_EVENTS_TOPIC,
+                    event.orderId().toString(),
+                    InventoryReservationFailedEvent.EVENT_TYPE,
+                    writePayload(outEvent),
+                    now
+                );
+                return ReservationOutcome.ORDER_ALREADY_CANCELLED;
+            }
             return ReservationOutcome.DUPLICATE;
         }
 
@@ -143,6 +171,46 @@ public class InventoryReservationService {
         );
 
         return outcome;
+    }
+
+    @Transactional
+    public void cancel(OrderCancelledEvent event) {
+        Instant now = Instant.now();
+        int insertedEvents = processedEventRepository.insertIfAbsent(
+            event.eventId(),
+            event.eventType(),
+            now
+        );
+        if (insertedEvents == 0) {
+            return;
+        }
+
+        Optional<ReservationEntity> reservationOpt = reservationRepository.findById(event.orderId());
+        if (reservationOpt.isEmpty()) {
+            ReservationEntity tombstone = new ReservationEntity(
+                event.orderId(),
+                event.sku(),
+                0,
+                ReservationStatus.CANCELLED,
+                "ORDER_ALREADY_CANCELLED",
+                now,
+                now
+            );
+            reservationRepository.save(tombstone);
+            return;
+        }
+
+        ReservationEntity reservation = reservationOpt.get();
+        if (reservation.getStatus() == ReservationStatus.HELD) {
+            inventoryRepository.releaseStock(
+                event.sku(),
+                reservation.getQuantity(),
+                now
+            );
+            reservation.setStatus(ReservationStatus.RELEASED);
+            reservation.setUpdatedAt(now);
+            reservationRepository.save(reservation);
+        }
     }
 
     private String writePayload(Object event) {

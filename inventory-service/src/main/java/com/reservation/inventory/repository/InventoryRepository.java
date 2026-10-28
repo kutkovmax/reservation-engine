@@ -24,4 +24,19 @@ public interface InventoryRepository extends JpaRepository<Inventory, String> {
         @Param("quantity") int quantity,
         @Param("updatedAt") Instant updatedAt
     );
+
+    @Modifying(clearAutomatically = true, flushAutomatically = true)
+    @Query("""
+        UPDATE Inventory inventory
+        SET inventory.reservedStock = inventory.reservedStock - :quantity,
+            inventory.version = inventory.version + 1,
+            inventory.updatedAt = :updatedAt
+        WHERE inventory.sku = :sku
+          AND inventory.reservedStock >= :quantity
+        """)
+    int releaseStock(
+        @Param("sku") String sku,
+        @Param("quantity") int quantity,
+        @Param("updatedAt") Instant updatedAt
+    );
 }

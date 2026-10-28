@@ -16,12 +16,14 @@ import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
 
 import java.time.Instant;
+import java.util.Optional;
 import java.util.UUID;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyLong;
 import static org.mockito.ArgumentMatchers.eq;
+import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.verifyNoInteractions;
 import static org.mockito.Mockito.when;
@@ -177,13 +179,125 @@ class InventoryReservationServiceTest {
     void skipsReservationWhenOrderIdAlreadyExists() {
         OrderPlacedEvent event = event("BOOK-001", 2);
         acceptNewEvent(event);
-        when(reservationRepository.existsById(event.orderId())).thenReturn(true);
+        ReservationEntity existing = new ReservationEntity(
+            event.orderId(), "BOOK-001", 2, ReservationStatus.HELD, null, Instant.now(), Instant.now()
+        );
+        when(reservationRepository.findById(event.orderId())).thenReturn(Optional.of(existing));
 
         ReservationOutcome outcome = reservationService.reserve(event);
 
         assertThat(outcome).isEqualTo(ReservationOutcome.DUPLICATE);
         verifyNoInteractions(inventoryRepository);
         verifyNoInteractions(outboxRepository);
+    }
+
+    @Test
+    void reserveFailsWithOrderAlreadyCancelledWhenTombstoneExists() {
+        OrderPlacedEvent event = event("BOOK-001", 2);
+        acceptNewEvent(event);
+        ReservationEntity tombstone = new ReservationEntity(
+            event.orderId(), "BOOK-001", 0, ReservationStatus.CANCELLED, "ORDER_ALREADY_CANCELLED", Instant.now(), Instant.now()
+        );
+        when(reservationRepository.findById(event.orderId())).thenReturn(Optional.of(tombstone));
+
+        ReservationOutcome outcome = reservationService.reserve(event);
+
+        assertThat(outcome).isEqualTo(ReservationOutcome.ORDER_ALREADY_CANCELLED);
+        verifyNoInteractions(inventoryRepository);
+
+        verify(outboxRepository).insertMessage(
+            any(UUID.class),
+            any(UUID.class),
+            eq(event.orderId()),
+            eq(1L),
+            eq("inventory-events"),
+            eq(event.orderId().toString()),
+            eq("InventoryReservationFailed"),
+            any(String.class),
+            any(Instant.class)
+        );
+    }
+
+    @Test
+    void cancelReleasesHeldStockAndUpdatesReservationToReleased() {
+        UUID orderId = UUID.randomUUID();
+        UUID eventId = UUID.randomUUID();
+        com.reservation.inventory.event.OrderCancelledEvent event = new com.reservation.inventory.event.OrderCancelledEvent(
+            eventId, 2L, orderId, "BOOK-001", "USER_REQUESTED", Instant.now()
+        );
+
+        when(processedEventRepository.insertIfAbsent(eq(eventId), eq("OrderCancelled"), any(Instant.class)))
+            .thenReturn(1);
+        ReservationEntity reservation = new ReservationEntity(
+            orderId, "BOOK-001", 2, ReservationStatus.HELD, null, Instant.now(), Instant.now()
+        );
+        when(reservationRepository.findById(orderId)).thenReturn(Optional.of(reservation));
+
+        reservationService.cancel(event);
+
+        verify(inventoryRepository).releaseStock(eq("BOOK-001"), eq(2), any(Instant.class));
+        assertThat(reservation.getStatus()).isEqualTo(ReservationStatus.RELEASED);
+        verify(reservationRepository).save(reservation);
+    }
+
+    @Test
+    void cancelCreatesTombstoneWhenReservationMissing() {
+        UUID orderId = UUID.randomUUID();
+        UUID eventId = UUID.randomUUID();
+        com.reservation.inventory.event.OrderCancelledEvent event = new com.reservation.inventory.event.OrderCancelledEvent(
+            eventId, 2L, orderId, "BOOK-001", "USER_REQUESTED", Instant.now()
+        );
+
+        when(processedEventRepository.insertIfAbsent(eq(eventId), eq("OrderCancelled"), any(Instant.class)))
+            .thenReturn(1);
+        when(reservationRepository.findById(orderId)).thenReturn(Optional.empty());
+
+        reservationService.cancel(event);
+
+        verifyNoInteractions(inventoryRepository);
+        ArgumentCaptor<ReservationEntity> captor = ArgumentCaptor.forClass(ReservationEntity.class);
+        verify(reservationRepository).save(captor.capture());
+        ReservationEntity saved = captor.getValue();
+        assertThat(saved.getOrderId()).isEqualTo(orderId);
+        assertThat(saved.getStatus()).isEqualTo(ReservationStatus.CANCELLED);
+        assertThat(saved.getFailureReason()).isEqualTo("ORDER_ALREADY_CANCELLED");
+    }
+
+    @Test
+    void cancelDoesNotReleaseStockWhenAlreadyRejected() {
+        UUID orderId = UUID.randomUUID();
+        UUID eventId = UUID.randomUUID();
+        com.reservation.inventory.event.OrderCancelledEvent event = new com.reservation.inventory.event.OrderCancelledEvent(
+            eventId, 2L, orderId, "BOOK-001", "USER_REQUESTED", Instant.now()
+        );
+
+        when(processedEventRepository.insertIfAbsent(eq(eventId), eq("OrderCancelled"), any(Instant.class)))
+            .thenReturn(1);
+        ReservationEntity reservation = new ReservationEntity(
+            orderId, "BOOK-001", 2, ReservationStatus.REJECTED, "INSUFFICIENT_STOCK", Instant.now(), Instant.now()
+        );
+        when(reservationRepository.findById(orderId)).thenReturn(Optional.of(reservation));
+
+        reservationService.cancel(event);
+
+        verifyNoInteractions(inventoryRepository);
+    }
+
+    @Test
+    void cancelSkipsDuplicateEvent() {
+        UUID orderId = UUID.randomUUID();
+        UUID eventId = UUID.randomUUID();
+        com.reservation.inventory.event.OrderCancelledEvent event = new com.reservation.inventory.event.OrderCancelledEvent(
+            eventId, 2L, orderId, "BOOK-001", "USER_REQUESTED", Instant.now()
+        );
+
+        when(processedEventRepository.insertIfAbsent(eq(eventId), eq("OrderCancelled"), any(Instant.class)))
+            .thenReturn(0);
+
+        reservationService.cancel(event);
+
+        verifyNoInteractions(inventoryRepository);
+        verify(reservationRepository, never()).findById(any());
     }
 
     private void acceptNewEvent(OrderPlacedEvent event) {
