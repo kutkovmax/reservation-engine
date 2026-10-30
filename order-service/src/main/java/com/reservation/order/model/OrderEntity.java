@@ -103,6 +103,12 @@ public class OrderEntity {
         this.updatedAt = now;
     }
 
+    public void markExpired(Instant now) {
+        this.status = OrderStatus.EXPIRED;
+        this.aggregateVersion++;
+        this.updatedAt = now;
+    }
+
     public UUID getId() {
         return id;
     }

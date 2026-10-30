@@ -33,6 +33,8 @@ spring:
 
 reservation:
   hold-ttl: ${HOLD_TTL:15m}
+  expiration-scan-interval-ms: ${EXPIRATION_SCAN_INTERVAL_MS:30000}
+  expiration-batch-size: ${EXPIRATION_BATCH_SIZE:50}
   outbox:
     batch-size: ${OUTBOX_BATCH_SIZE:50}
     poll-interval-ms: ${OUTBOX_POLL_INTERVAL_MS:500}

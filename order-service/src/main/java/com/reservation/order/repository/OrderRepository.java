@@ -7,6 +7,7 @@ import org.springframework.data.jpa.repository.Query;
 import org.springframework.data.repository.query.Param;
 
 import java.time.Instant;
+import java.util.List;
 import java.util.Optional;
 import java.util.UUID;
 
@@ -36,5 +37,20 @@ public interface OrderRepository extends JpaRepository<OrderEntity, UUID> {
         @Param("sku") String sku,
         @Param("quantity") int quantity,
         @Param("createdAt") Instant createdAt
+    );
+
+    @Query(
+        value = """
+            SELECT * FROM orders
+            WHERE status = 'RESERVED' AND expires_at <= :now
+            ORDER BY expires_at ASC
+            LIMIT :batchSize
+            FOR UPDATE SKIP LOCKED
+            """,
+        nativeQuery = true
+    )
+    List<OrderEntity> findExpiredOrdersForUpdate(
+        @Param("now") Instant now,
+        @Param("batchSize") int batchSize
     );
 }
