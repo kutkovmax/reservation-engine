@@ -49,6 +49,7 @@ public class OrderService {
     private final ObjectMapper objectMapper;
     private final Duration holdTtl;
 
+    @org.springframework.beans.factory.annotation.Autowired
     public OrderService(
         OrderRepository orderRepository,
         OutboxRepository outboxRepository,

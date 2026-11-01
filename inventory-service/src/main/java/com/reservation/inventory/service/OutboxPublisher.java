@@ -39,6 +39,7 @@ public class OutboxPublisher {
     }
 
     @Scheduled(fixedDelayString = "${reservation.outbox.poll-interval-ms:500}")
+    @Transactional
     public void publishScheduled() {
         publishBatch();
     }

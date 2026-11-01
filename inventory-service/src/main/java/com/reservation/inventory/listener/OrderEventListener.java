@@ -8,6 +8,7 @@ import com.reservation.inventory.service.InventoryReservationService;
 import com.reservation.inventory.service.ReservationOutcome;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.kafka.annotation.KafkaListener;
 import org.springframework.stereotype.Component;
@@ -27,6 +28,7 @@ public class OrderEventListener {
     private final boolean simulateCrashAfterReservation;
     private final Set<UUID> crashedEventIds = ConcurrentHashMap.newKeySet();
 
+    @Autowired
     public OrderEventListener(
         InventoryReservationService reservationService,
         ObjectMapper objectMapper,
@@ -63,7 +65,10 @@ public class OrderEventListener {
                     OrderCancelledEvent event = objectMapper.treeToValue(root, OrderCancelledEvent.class);
                     handleOrderCancelled(event);
                 }
-                default -> log.warn("Пропуск неизвестного типа события из {}: eventType={}", ORDER_EVENTS_TOPIC, eventType);
+                default -> {
+                    log.warn("Неизвестный тип события из {}: eventType={}", ORDER_EVENTS_TOPIC, eventType);
+                    throw new IllegalArgumentException("Unknown or unsupported eventType: " + eventType);
+                }
             }
         } catch (Exception exception) {
             log.error("Ошибка при обработке сообщения из топика {}: {}", ORDER_EVENTS_TOPIC, exception.getMessage(), exception);

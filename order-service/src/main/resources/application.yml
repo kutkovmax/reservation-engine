@@ -7,7 +7,7 @@ spring:
   datasource:
     url: ${ORDER_DB_URL:jdbc:postgresql://localhost:15432/order_db}
     username: ${ORDER_DB_USERNAME:postgres}
-    password: ${ORDER_DB_PASSWORD}
+    password: ${ORDER_DB_PASSWORD:password}
   jpa:
     open-in-view: false
     hibernate:

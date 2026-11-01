@@ -25,4 +25,6 @@ public interface ProcessedEventRepository extends Repository<ProcessedEvent, UUI
         @Param("eventType") String eventType,
         @Param("processedAt") Instant processedAt
     );
+
+    boolean existsById(UUID eventId);
 }

@@ -21,7 +21,7 @@ public class OrderEntity {
     @Column(name = "idempotency_key", nullable = false, updatable = false, length = 100, unique = true)
     private String idempotencyKey;
 
-    @Column(name = "request_hash", nullable = false, updatable = false, length = 64)
+    @Column(name = "request_hash", nullable = false, updatable = false, length = 64, columnDefinition = "bpchar")
     private String requestHash;
 
     @Column(name = "sku", nullable = false, updatable = false, length = 64)
