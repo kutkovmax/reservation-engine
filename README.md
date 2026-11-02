@@ -103,15 +103,25 @@ if (existing.getStatus() == ReservationStatus.CANCELLED) {
 
 ## Запуск и API
 
-Нужны JDK 21, Docker и Docker Compose. Инфраструктура: PostgreSQL 16 на `localhost:15432`, Kafka в режиме KRaft на `localhost:9092`, Kafka UI на `localhost:8080`.
+Для работы нужны Docker и Docker Compose (JDK 21 нужен только при локальном запуске без Docker).
+
+### Вариант 1: Полный запуск всего стека одной командой в Docker
 
 ```bash
-docker compose up -d
+docker compose up -d --build
 ```
 
-После готовности контейнеров запустите сервисы в двух терминалах:
+Docker поднимет базы данных PostgreSQL 16 (`localhost:15432`), Kafka KRaft (`localhost:9092`), веб-панель Kafka UI (`localhost:8080`), а также оба микросервиса: `order-service` (`localhost:8081`) и `inventory-service` (`localhost:8082`).
+
+### Вариант 2: Запуск инфраструктуры в Docker + сервисы локально
+
+Если нужно запускать или отлаживать сервисы локально в IDE / терминале:
 
 ```bash
+# 1. Запуск инфраструктуры
+docker compose up -d postgres kafka kafka-init kafka-ui
+
+# 2. Запуск сервисов в отдельных терминалах
 ./mvnw spring-boot:run -pl order-service
 ./mvnw spring-boot:run -pl inventory-service
 ```

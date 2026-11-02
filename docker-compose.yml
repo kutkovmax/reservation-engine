@@ -95,5 +95,48 @@ services:
       kafka-init:
         condition: service_completed_successfully
 
+  order-service:
+    build:
+      context: .
+      dockerfile: order-service/Dockerfile
+    container_name: reservation-order-service
+    restart: unless-stopped
+    ports:
+      - "8081:8081"
+    environment:
+      ORDER_DB_URL: jdbc:postgresql://postgres:5432/order_db
+      ORDER_DB_USERNAME: postgres
+      ORDER_DB_PASSWORD: password
+      KAFKA_BOOTSTRAP_SERVERS: kafka:29092
+    depends_on:
+      postgres:
+        condition: service_healthy
+      kafka:
+        condition: service_healthy
+      kafka-init:
+        condition: service_completed_successfully
+
+  inventory-service:
+    build:
+      context: .
+      dockerfile: inventory-service/Dockerfile
+    container_name: reservation-inventory-service
+    restart: unless-stopped
+    ports:
+      - "8082:8082"
+    environment:
+      INVENTORY_DB_URL: jdbc:postgresql://postgres:5432/inventory_db
+      INVENTORY_DB_USERNAME: postgres
+      INVENTORY_DB_PASSWORD: password
+      KAFKA_BOOTSTRAP_SERVERS: kafka:29092
+    depends_on:
+      postgres:
+        condition: service_healthy
+      kafka:
+        condition: service_healthy
+      kafka-init:
+        condition: service_completed_successfully
+
 volumes:
   postgres_data:
+
