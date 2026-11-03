@@ -111,7 +111,7 @@ if (existing.getStatus() == ReservationStatus.CANCELLED) {
 docker compose up -d --build
 ```
 
-Docker поднимет базы данных PostgreSQL 16 (`localhost:15432`), Kafka KRaft (`localhost:9092`), веб-панель Kafka UI (`localhost:8080`), а также оба микросервиса: `order-service` (`localhost:8081`) и `inventory-service` (`localhost:8082`).
+Docker поднимет PostgreSQL 16 (`localhost:15432`), Kafka KRaft (`localhost:9092`), Kafka UI (`localhost:8080`) и оба сервиса. API `order-service` доступен на `localhost:8081`; `inventory-service` работает только через Kafka и не публикует порт на хосте.
 
 ### Вариант 2: Запуск инфраструктуры в Docker + сервисы локально
 

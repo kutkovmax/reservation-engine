@@ -122,8 +122,6 @@ services:
       dockerfile: inventory-service/Dockerfile
     container_name: reservation-inventory-service
     restart: unless-stopped
-    ports:
-      - "8082:8082"
     environment:
       INVENTORY_DB_URL: jdbc:postgresql://postgres:5432/inventory_db
       INVENTORY_DB_USERNAME: postgres
